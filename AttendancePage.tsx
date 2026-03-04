@@ -54,12 +54,6 @@ type UserListItem = {
   department_id?: number | null;
   status: string;
 };
-const INTERNAL_ROLE_IDS = new Set<number>([6, 7, 8]);
-function isInternalUser(u: UserListItem | null | undefined) {
-  const rid = u?.role_id;
-  return typeof rid === "number" && INTERNAL_ROLE_IDS.has(rid);
-}
-
 
 function fmtHM(mins?: number | null) {
   if (!mins || mins <= 0) return "-";
@@ -214,31 +208,47 @@ export default function AttendancePage() {
       }
     });
 
-    // users 목록을 로드하지 못한 경우(권한/엔드포인트 차이 등)에는 todayStatus만 그대로 표시한다.
-    // users가 있는 경우에는 users(=내부 인원 필터링된 목록)를 기준으로만 렌더링하여 외부/guest가 섞이지 않도록 한다.
-    if (!users) {
-      (todayStatus || []).forEach((it: any) => {
-        if (it && typeof it.user_id === "number") merged.push(it);
-      });
-    }
+    (todayStatus || []).forEach((it: any) => {
+      if (it && typeof it.user_id === "number") {
+        const exists = (users || []).some((u: any) => u.id === it.user_id);
+        if (!exists) merged.push(it);
+      }
+    });
 
     merged.sort((a, b) => (a.user_id || 0) - (b.user_id || 0));
     return merged;
   }, [todayStatus, users]);
 
   async function loadUsers() {
+    const allowedRoles = new Set([6, 7, 8]); // 관리자/운영자/회사직원
+    const normalize = (list: UserListItem[]) =>
+      [...list]
+        .filter((u) => (u as any)?.role_id == null || allowedRoles.has(Number((u as any).role_id)))
+        .sort((a, b) => (a.id || 0) - (b.id || 0));
+
+    try {
+      // ✅ attendance 모듈에서 내부 직원만 제공(권장)
+      const list = await api<UserListItem[]>("/api/attendance/users", { method: "GET" });
+      setUsers(normalize(list));
+      return;
+    } catch {
+      // ignore
+    }
+
     try {
       const list = await api<UserListItem[]>("/api/users", { method: "GET" });
-      const filtered = (list || []).filter(isInternalUser);
-      setUsers([...filtered].sort((a, b) => (a.id || 0) - (b.id || 0)));
+      setUsers(normalize(list));
+      return;
     } catch {
-      try {
-        const list = await api<UserListItem[]>("/api/admin/users", { method: "GET" });
-         const filtered = (list || []).filter(isInternalUser);
-         setUsers([...filtered].sort((a, b) => (a.id || 0) - (b.id || 0)));
-      } catch {
-        setUsers(null);
-      }
+      // ignore
+    }
+
+    try {
+      const list = await api<UserListItem[]>("/api/admin/users", { method: "GET" });
+      setUsers(normalize(list));
+      return;
+    } catch {
+      setUsers(null);
     }
   }
 
