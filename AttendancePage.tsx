@@ -559,7 +559,7 @@ export default function AttendancePage() {
                 type="datetime-local"
                 value={manualAtLocal}
                 onChange={(e) => setManualAtLocal(e.target.value)}
-                style={{ width: 220, colorScheme: "dark" }}
+                style={{ width: 270, colorScheme: "dark" }}
               />
             )}
 

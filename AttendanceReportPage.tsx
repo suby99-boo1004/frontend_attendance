@@ -9,6 +9,7 @@ type UserListItem = {
   id: number;
   name: string;
   email?: string;
+  role_id?: number;
 };
 
 type DetailDay = {
@@ -72,6 +73,8 @@ function uniq(arr: string[]) {
 export default function AttendanceReportPage() {
   const nav = useNavigate();
 
+  const ALLOWED_ROLE_IDS = useMemo(() => [6, 7, 8], []);
+
   const [period, setPeriod] = useState<Period>("day");
   const [selectedDay, setSelectedDay] = useState(dayjs().format("YYYY-MM-DD"));
   const [selectedMonth, setSelectedMonth] = useState(dayjs().format("YYYY-MM"));
@@ -117,7 +120,7 @@ export default function AttendanceReportPage() {
     setUsersLoading(true);
     setUsersError(null);
     try {
-      const endpoints = ["/api/users", "/api/admin/users", "/api/admin/user/list"]; // 폴백
+      const endpoints = ["/api/attendance/users", "/api/users", "/api/admin/users", "/api/admin/user/list"]; // 폴백
       let lastErr: any = null;
       for (const url of endpoints) {
         try {
@@ -134,8 +137,13 @@ export default function AttendanceReportPage() {
               id: Number(u?.id ?? u?.user_id),
               name: String(u?.name ?? u?.user_name ?? ""),
               email: u?.email ? String(u.email) : undefined,
+              role_id: Number(u?.role_id ?? u?.role?.id),
             }))
-            .filter((u: any) => Number.isFinite(u.id) && u.id > 0 && u.name);
+            .filter((u: any) => {
+              if (!Number.isFinite(u.id) || u.id <= 0 || !u.name) return false;
+              if (!Number.isFinite(u.role_id)) return false;
+              return ALLOWED_ROLE_IDS.includes(u.role_id);
+            });
 
           if (mapped.length > 0) {
             setUsers(mapped.sort((a, b) => a.id - b.id));
@@ -159,6 +167,13 @@ export default function AttendanceReportPage() {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 사용자 목록이 갱신되면 선택된 ID가 내부직원(6/7/8) 목록에 포함되는지 보정
+  useEffect(() => {
+    if (!users || users.length === 0) return;
+    const allowed = new Set(users.map((u) => u.id));
+    setSelectedUserIds((prev) => prev.filter((id) => allowed.has(id)));
+  }, [users]);
 
   const filteredUsers = useMemo(() => {
     const qq = q.trim().toLowerCase();
